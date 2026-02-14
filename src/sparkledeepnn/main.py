@@ -1,64 +1,15 @@
+from Linear import Linear
+from BatchNorm import BatchNorm1d
+from Activations import Tanh
+
 import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 
-class Linear:
-    def __init__(self, fan_in, fan_out, bias=True):
-        self.weight = torch.randn((fan_in, fan_out), generator=g ) / fan_in**0.5
-        self.bias = torch.zeros(fan_out) if bias else None 
-    
-    def __call__(self, x):
-        self.out = x @ self.weight
-        if self.bias is not None:
-            self.out += self.bias
-        return self.out
 
-    def parameters(self):
-        return [self.weight] + ([] if self.bias is None else [self.bias])
-
-class BatchNorm1d:
-    def __init__(self, dim, eps = 0.5, momentum=0.1):
-        self.eps = eps
-        self.momentum = momentum 
-        self.training = True 
-        self.gamma = torch.ones(dim)
-        self.beta = torch.zeros(dim)
-        self.running_mean = torch.zeros(dim)
-        self.running_var = torch.ones(dim)
-
-    def __call__(self, x):
-        #calculate the forward pass
-        if self.training:
-            xmean = x.mean(dim = 0, keepdim = True)
-            xvar = x.var(dim = 0, keepdim = True)
-        else:
-            xmean = self.running_mean 
-            xvar = self.running_var 
-        
-        xhat = (x - xmean) / torch.sqrt(xvar + self.eps)
-        self.out = self.gamma * xhat + self.beta 
-
-        if self.training:
-            with torch.no_grad():
-                self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * xmean
-                self.running_var = (1 - self.momentum) * self.running_var + self.momentum * xvar
-        
-        return self.out
-
-    def parameters(self):
-        return [self.gamma, self.beta]
-    
-class Tanh:
-    def __call__(self, x):
-        self.out = torch.tanh(x) 
-        return self.out
-    def parameters(self):
-        return []
-
-
-# Create the dataset of the bigrams
-def build_dataset(block: int, names: list[str]):
+# Create the datasets of the bigrams
+def build_datasets(block: int, names: list[str], ratio=(0.8, 0.1, 0.1)):
     X, Y = [], []
     for n in names:
         context = [0]*block
@@ -67,9 +18,7 @@ def build_dataset(block: int, names: list[str]):
             Y.append(stoi[c])
 
             context = context[1:] + [stoi[c]]
-    return torch.tensor(X), torch.tensor(Y)
-
-
+    return torch.tensor(X[0:int(0.8*len(X))]), torch.tensor(Y[0:int(0.8*len(Y))]), torch.tensor(X[int(0.8*len(X)):int(0.9*len(X))]), torch.tensor(Y[int(0.8*len(Y)):int(0.9*len(Y))]), torch.tensor(X[int(0.9*len(X)):]), torch.tensor(Y[int(0.9*len(Y)):])
 
 
 ### Main deep learning model training and evalution flow ###
@@ -86,17 +35,20 @@ itos = {i: c for c, i in stoi.items()}
 n_embd = 10 # The dimensionality of the character embedding vector 
 n_hidden = 100 # The number of hidden units in the feed forward network 
 
-maxsteps = 200000
+maxsteps = 130000
 batch_size = 64
 lossi = []
-block_size = 3
+block_size = 5
 
 g = torch.Generator().manual_seed(2147483647)
 
 C = torch.randn((27, n_embd), generator=g)
 
-Xtr, Ytr = build_dataset(block_size, names)
+# Create the train, validation, and test datasets based on our vocabulary and the names
+Xtr, Ytr, Xval, Yval, Xte, Yte = build_datasets(block_size, names)
 
+
+## Create the model layers and parameters
 layers  = [
     Linear(n_embd * block_size, n_hidden, bias=False),
     BatchNorm1d(n_hidden),
@@ -115,11 +67,11 @@ with torch.no_grad():
     
 parameters = [C] + [p for layer in layers for p in layer.parameters()]
 
-print(sum(p.nelement() for p in parameters))
 for p in parameters:
     p.requires_grad = True
 
 
+## Train the model
 for i in range(maxsteps):
     #sample batch_size random sequences
     ix = torch.randint(0, Xtr.shape[0], (batch_size,), generator=g)
@@ -130,7 +82,6 @@ for i in range(maxsteps):
     x = emb.view(emb.shape[0], -1)
     for layer in layers:
         x = layer(x)
-    
     loss = F.cross_entropy(x, Yb)
 
     #backward pass 
@@ -150,3 +101,24 @@ for i in range(maxsteps):
         print(f"step {i}: loss {loss.log10().item()}")
     lossi.append(loss.log10().item())
     
+## Sample from the trained model
+for _ in range(20):
+    out = []
+    context = [0] * block_size
+    while True:
+      emb = C[torch.tensor([context])] # (1, block_size, n_embd)
+      x = emb.view(1, -1)
+      for layer in layers:
+        x = layer(x)
+      logits = x
+      probs = F.softmax(logits, dim=1)
+      # sample from the distribution
+      ix = torch.multinomial(probs, num_samples=1, generator=g).item()
+      # shift the context window and track the samples
+      context = context[1:] + [ix]
+      out.append(ix)
+      # if we sample the special '.' token, break
+      if ix == 0:
+        break
+    
+    print(''.join(itos[i] for i in out)) # decode and print the generated word
