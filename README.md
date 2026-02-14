@@ -17,25 +17,26 @@ There is track of the loss per epoch and many parameters that can be adjusted fo
 ## The example
 The basic arameters that we used for training our model, as a basic working example, and exist in main.py (feel free to play with them) are the embedding size, which is set to 10, and the block size, which is 5, which
 means that we take 5 characters tom predict the next. With that setting, the names that have been generated are:
-ayfoah.
-memariona.
-jada.
-aeri.
-karim.
-safza.
-carola.
-ayafah.
-amadah.
-merye.
-malah.
-audri.
-quinnlee.
-dailey.
-talyn.
-zyaretsy.
-borie.
-mudhan.
-hadari.
+ayfoah. \
+memariona. \
+jada. \
+aeri. \
+karim. \
+safza. \
+carola. \
+ayafah. \ 
+amadah. \
+merye. \
+malah. \
+audri. \
+quinnlee. \
+dailey. \
+talyn. \
+zyaretsy. \
+borie. \
+mudhan. \
+hadari. \
 dilah.
+
 
 
